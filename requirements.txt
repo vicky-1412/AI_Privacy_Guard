@@ -4,3 +4,4 @@ plotly
 pandas
 xlsxwriter
 fpdf
+google-generativeai
