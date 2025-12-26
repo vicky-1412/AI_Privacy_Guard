@@ -1,60 +1,86 @@
 import streamlit as st
+import sqlite3
+import hashlib
 import re
 from pypdf import PdfReader
+import plotly.express as px
+import pandas as pd
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="AI Privacy Pro", page_icon="🔐")
+# --- CUSTOM CSS FOR DARK MODE LOOK ---
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #ff4b4b; color: white; }
+    .stTextInput>div>div>input { background-color: #262730; color: white; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- LOGIN LOGIC ---
-def login():
-    st.title("🔐 Secure Login")
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
-    
-    # Inga nee unakku pudicha username & password vechukko macha
+# --- DATABASE SETUP ---
+conn = sqlite3.connect('users.db', check_same_thread=False)
+c = conn.cursor()
+c.execute('CREATE TABLE IF NOT EXISTS userstable(username TEXT, password TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS history(username TEXT, scan_type TEXT, count INTEGER, date TEXT)')
+conn.commit()
+
+def make_hashes(password): return hashlib.sha256(str.encode(password)).hexdigest()
+def check_hashes(password, hashed_text): return make_hashes(password) == hashed_text
+
+# --- APP UI ---
+st.sidebar.title("🛡️ Privacy Pro AI")
+menu = ["Login", "SignUp", "Dashboard"]
+choice = st.sidebar.selectbox("Navigate", menu)
+
+if choice == "SignUp":
+    st.subheader("Create a New Account")
+    new_user = st.text_input("Username")
+    new_pwd = st.text_input("Password", type='password')
+    if st.button("Create Account"):
+        c.execute('INSERT INTO userstable(username, password) VALUES (?,?)', (new_user, make_hashes(new_pwd)))
+        conn.commit()
+        st.success("Account Created! Login panni mass kaatu macha.")
+
+elif choice == "Login":
+    st.subheader("Welcome Back!")
+    username = st.text_input("User Name")
+    password = st.text_input("Password", type='password')
     if st.button("Login"):
-        if user == "macha" and pwd == "Strong@123": # Strong Password Example
-            st.session_state["logged_in"] = True
+        c.execute('SELECT * FROM userstable WHERE username =?', (username,))
+        data = c.fetchone()
+        if data and check_hashes(password, data[1]):
+            st.session_state['logged_in'] = True
+            st.session_state['user'] = username
             st.rerun()
-        else:
-            st.error("Invalid Username or Password! Correct-ah podu macha.")
 
-# --- MAIN APP FUNCTION ---
-def main_app():
-    st.title("🛡️ Pro Privacy Guard")
-    st.sidebar.success("Welcome Macha! You are logged in. ✅")
+    if st.session_state.get('logged_in'):
+        st.success(f"Logged in as {st.session_state['user']}")
+        # --- SCANNER LOGIC ---
+        input_text = st.text_area("Paste text or sensitive data here:")
+        if st.button("Protect Now"):
+            # Regex logic
+            email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+            matches = len(re.findall(email_pattern, input_text))
+            protected = re.sub(email_pattern, "[EMAIL PROTECTED]", input_text)
+            
+            st.subheader("Protected Data:")
+            st.code(protected)
+            
+            # Save stats
+            from datetime import date
+            c.execute('INSERT INTO history VALUES (?,?,?,?)', (st.session_state['user'], "Text Scan", matches, str(date.today())))
+            conn.commit()
+            st.balloons()
+
+elif choice == "Dashboard":
+    st.subheader("📊 Global Privacy Analytics")
+    c.execute('SELECT scan_type, SUM(count) FROM history GROUP BY scan_type')
+    db_data = c.fetchall()
     
-    if st.sidebar.button("Logout"):
-        st.session_state["logged_in"] = False
-        st.rerun()
-
-    # Masking Logic
-    def mask_private_info(text):
-        email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-        phone_pattern = r'\b\d{10}\b'
-        card_pattern = r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b'
-        text = re.sub(email_pattern, "[EMAIL PROTECTED]", text)
-        text = re.sub(phone_pattern, "[PHONE HIDDEN]", text)
-        text = re.sub(card_pattern, "[CARD HIDDEN]", text)
-        return text
-
-    tab1, tab2 = st.tabs(["📝 Text Scanner", "📄 PDF Scanner"])
-    with tab1:
-        user_input = st.text_area("Paste text here:")
-        if st.button("Protect Text"):
-            st.success(mask_private_info(user_input))
-    with tab2:
-        uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
-        if uploaded_file:
-            reader = PdfReader(uploaded_file)
-            full_text = "".join([p.extract_text() for p in reader.pages])
-            st.write(mask_private_info(full_text))
-
-# --- APP FLOW ---
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if not st.session_state["logged_in"]:
-    login()
-else:
-    main_app()
+    if db_data:
+        df = pd.DataFrame(db_data, columns=['Type', 'Total Data Protected'])
+        fig = px.bar(df, x='Type', y='Total Data Protected', color='Type', template="plotly_dark")
+        st.plotly_chart(fig)
+        
+        # Performance Card
+        st.metric(label="Total Leaks Blocked", value=df['Total Data Protected'].sum(), delta="Mass Improvement")
+    else:
+        st.warning("No data found! Login panni oru scan pannu macha.")
