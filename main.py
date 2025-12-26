@@ -40,4 +40,5 @@ with tab2:
 
 st.sidebar.title("Settings")
 st.sidebar.write("Project: AI Privacy Guard v2.0")
+
 st.sidebar.write("Status: Active 🟢")
