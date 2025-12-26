@@ -3,52 +3,67 @@ import re
 import pandas as pd
 from io import BytesIO
 
-# --- DOWNLOAD HELPERS ---
-def convert_df(df):
-    # Excel format-ku matha
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Privacy AI Legend", page_icon="🛡️", layout="wide")
+
+# --- FUNCTIONS ---
+def convert_to_excel(protected_text):
+    df = pd.DataFrame([{"Original_Data": "User Input", "Protected_Result": protected_text}])
     output = BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, index=False, sheet_name='Sheet1')
-    writer.close()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='PrivacyReport')
     return output.getvalue()
 
-# --- MAIN APP ---
-# (Munnadi panna Login/Database logic-ah apdiye vechukko macha, 
-# Scanner section-la mattum intha download logic-ah add pannu)
+def mask_data(text):
+    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    phone_pattern = r'\b\d{10}\b'
+    text = re.sub(email_pattern, "[EMAIL HIDDEN]", text)
+    text = re.sub(phone_pattern, "[PHONE HIDDEN]", text)
+    return text
 
-if st.session_state.get('logged_in'):
-    st.subheader("🚀 Pro Data Exporter")
-    input_text = st.text_area("Scan and Download panna text-ah podu:")
-    
-    if st.button("Secure & Generate Reports"):
-        # Regex Scan
-        email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-        protected_text = re.sub(email_pattern, "[EMAIL PROTECTED]", input_text)
+# --- UI DESIGN ---
+st.title("🛡️ AI Privacy Legend v3.0")
+st.markdown("### Protect your data and download professional reports (XL/Doc)")
+
+user_input = st.text_area("Macha, un sensitive text-ah inga podu:", height=200, placeholder="Example: My email is [email protected] and phone is 9876543210")
+
+if st.button("🚀 Secure & Generate Reports"):
+    if user_input.strip() != "":
+        protected = mask_data(user_input)
         
-        st.success("Data Protected!")
-        st.code(protected_text)
-        
-        # Reports Data
-        report_data = {'Original Text': [input_text], 'Protected Text': [protected_text]}
-        df = pd.DataFrame(report_data)
+        # Result Display
+        st.success("AI has successfully masked your data!")
+        st.code(protected, language="text")
         
         st.divider()
-        st.write("### ⬇️ Download Your Reports")
+        st.subheader("📥 Download Center")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
-            # XL Download
-            xl_data = convert_df(df)
-            st.download_button(label="📥 Download Excel", data=xl_data, file_name="Privacy_Report.xlsx")
+            # Excel Logic
+            excel_data = convert_to_excel(protected)
+            st.download_button(
+                label="📊 Download Excel Report",
+                data=excel_data,
+                file_name="Privacy_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
         with col2:
-            # TXT (Document) Download
-            st.download_button(label="📝 Download Doc (Txt)", data=protected_text, file_name="Privacy_Report.txt")
-            
-        with col3:
-            # Simple CSV Download
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📊 Download CSV", data=csv, file_name="Privacy_Report.csv")
-
+            # Text/Doc Logic
+            st.download_button(
+                label="📝 Download Text Document",
+                data=protected,
+                file_name="Protected_Data.txt",
+                mime="text/plain"
+            )
         st.balloons()
+    else:
+        st.error("Empty-ah irukku macha! Ethavathu type pannu.")
+
+st.sidebar.markdown("### App Features:")
+st.sidebar.write("✅ Email Masking")
+st.sidebar.write("✅ Phone Masking")
+st.sidebar.write("✅ Excel/XL Export")
+st.sidebar.write("✅ Doc/Text Export")
